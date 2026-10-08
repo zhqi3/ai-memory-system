@@ -1,0 +1,27 @@
+# Local environment and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+*.log
+
+# Private runtime data must live outside this repository.
+/AI-Memory/
+/AI-Context/
+/data/
+/private/
+/runtime/
+/backups/
+/conversations/
+/reviews/
+/sync/
+/inbox/
+/library.json
+/sync-config.json
+/workspace.json

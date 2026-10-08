@@ -1,0 +1,68 @@
+# 两层结构与数据边界
+
+## 精简记忆与原始上下文
+
+精简记忆保存当前状态、确认的决定、合作约定、发现和下一步。上下文补充库保存
+可获得的可见原文、来源映射、缺口及历史版本。原文只有在用户要求追溯、对齐或
+核实时才载入模型上下文；机械抓取或校验本身不等于模型阅读。
+
+新工作区结构：
+
+```text
+private-workspace/
+  workspace.json
+  AI-Memory/
+    AI_MEMORY_CONTRACT.md
+    context-library.json
+    global/startup-core.md
+    projects/<canonical-name>/
+      project-manifest.json
+      memory-index.md
+      handoff.md
+      working-agreement.md
+      project-brief.md
+      decisions.md
+      findings.md
+      session-log.md
+      ai-self-evaluation.md
+  AI-Context/
+    library.json
+    sync-config.json
+    AGENTS.md
+    conversations/<conversation-key>/revisions/<revision-hash>/
+    links/<project-slug>/<conversation-key>.json
+    reviews/<review-id>/
+    sync/
+```
+
+`workspace.json` 在初始化结束时生成，是显式路径入口。当前版本不支持直接移动
+已初始化的工作区；移动或迁移需要另外校验其中的绝对路径。公开源码树不包含
+工作区数据，也不依赖个人全局路径配置。
+
+## 版本、来源与阅读
+
+- 对话键由提供方与源会话 ID 共同确定。项目通过链接关联对话，避免按项目复制
+  相同原文。未知归属可以暂存，不能靠猜测分配。
+- 新内容生成新版本，旧版本保持不变。支持早期格式的读取与引用登记，但不
+  静默迁移历史或伪造可回放来源。
+- 每个新版本包含 manifest、结构化 records、Markdown 展示和允许保存的可见
+  来源产物。源记录顺序、扩展字段、分支或编辑信息在可获得时保留；来源缺失的
+  结构不会被推测补齐。
+- 校验区分文件完整性与来源回放。哈希能检测不一致，不提供第三方签名、公证或
+  防止有写权限者重算哈希的保证。
+- 读取默认版本取决于内容和结构的覆盖证据，不取决于导入时间。固定阅读计划
+  将取回与已阅读确认分开，记录未覆盖区间和后续修订。
+
+## 隐私与授权
+
+Codex 适配器排除可识别的系统、开发者和内部推理记录。规范化输入必须只含可见
+内容，工具输出中的普通文本仍可能包含敏感信息。常见凭据识别不是全量匿名化；
+内联媒体也不会经过 OCR 或敏感内容识别。真实归档不应因通过校验就被公开。
+
+POSIX 私有文件权限和符号链接拒绝减少意外访问，但不提供加密、多租户隔离、
+防恶意本地写入者或完整的并发路径竞争防护。这是供单个受信任本地使用者运行
+的工具包，不应直接包装成允许任意路径输入的公共服务。
+
+历史对话是数据，不能授予新的写入、执行或外发权限。自动抓取只能更新明确配置
+范围内的归档；精简记忆的写入仍由当前用户授权和契约控制。规范约束依赖调用者
+遵循，并非模型级别的强制隔离。源文件和 AI 平台数据库永远不是写入目标。

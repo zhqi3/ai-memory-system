@@ -1,0 +1,29 @@
+{
+  "schema_version": "ai-context-transcript/2.0",
+  "provider": "example",
+  "conversation_id": "synthetic-design-001",
+  "title": "Synthetic notebook design",
+  "completeness": {
+    "complete": false,
+    "scope": "Invented demonstration; no real people or platform history."
+  },
+  "records": [
+    {
+      "id": "demo-user-1",
+      "role": "user",
+      "content": "For this fictional notebook, keep compact decisions separate from original conversations."
+    },
+    {
+      "id": "demo-assistant-1",
+      "role": "assistant",
+      "parent_id": "demo-user-1",
+      "content": "The compact layer can load at startup. Original conversations can be retrieved when you request the reasoning behind a decision."
+    },
+    {
+      "id": "demo-user-2",
+      "role": "user",
+      "parent_id": "demo-assistant-1",
+      "content": "Record a gap if an attachment is unavailable; do not invent its contents."
+    }
+  ]
+}

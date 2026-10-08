@@ -1,0 +1,9 @@
+{
+  "schema_version": "ai-context-auto-sync/1.0",
+  "enabled": false,
+  "interval_minutes": 180,
+  "sources": [],
+  "codex_discovery_roots": [],
+  "workspace_routes": [],
+  "heartbeat_conversation_id": null
+}

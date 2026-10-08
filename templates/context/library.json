@@ -1,0 +1,5 @@
+{
+  "schema_version": "2.0",
+  "memory_root": "REPLACE_WITH_ABSOLUTE_PRIVATE_MEMORY_ROOT",
+  "load_conversation_bodies_on_startup": false
+}
