@@ -1,6 +1,11 @@
 """Reparse preserved visible source without trusting a summary or external path."""
 from pathlib import Path
 import json
+from context_library import LibraryError
+
+
+class SourceReplayError(LibraryError):
+    """Intact stored files whose retained source cannot reproduce the records."""
 
 
 def verify_source(path: Path, project=None):
@@ -15,17 +20,17 @@ def verify_source(path: Path, project=None):
         payload = adapter.replay_source_artifact(artifact, manifest['provider'],
                                                  manifest['conversation_id'], manifest.get('title') or '')
     except Exception as exc:
-        raise lib.LibraryError(f'Preserved source could not be replayed ({type(exc).__name__}); source contents were not printed.') from None
+        raise SourceReplayError(f'Preserved source could not be replayed ({type(exc).__name__}); source contents were not printed.') from None
     regenerated_manifest, regenerated = lib.prepare_payload(payload, None, manifest.get('title'))
     def visible(record):
         # Original byte offsets and paths remain in the stored records; replay
         # uses the preserved copy and may have changed length after redaction.
         return {key: value for key, value in record.items() if key != 'source_refs'}
     if [visible(record) for record in stored] != [visible(record) for record in regenerated]:
-        raise lib.LibraryError('Source replay does not reproduce the archived visible messages and structure.')
+        raise SourceReplayError('Source replay does not reproduce the archived visible messages and structure.')
     for key in ('conversation_metadata', 'exported_at', 'source_declared_completeness'):
         if manifest.get(key) != regenerated_manifest.get(key):
-            raise lib.LibraryError('Source replay does not reproduce the archived source metadata.')
+            raise SourceReplayError('Source replay does not reproduce the archived source metadata.')
     coverage = [{'record_id': record['id'], 'source_refs': record['source_refs'],
                  'visible_record_sha256': lib.digest(lib.canonical_bytes(visible(record)))} for record in stored]
     source_coverage = []
@@ -36,14 +41,14 @@ def verify_source(path: Path, project=None):
                 ref.get('line') == source_ref.get('line') and ref.get('byte_start') == source_ref.get('byte_start')
                 for ref in record['source_refs'])]
             if not ids:
-                raise lib.LibraryError('A preserved public source row has no archived message mapping.')
+                raise SourceReplayError('A preserved public source row has no archived message mapping.')
             source_coverage.append({'source_ref': source_ref, 'record_ids': ids, 'status': 'mapped'})
     elif artifact['format'] in {'ai-context-transcript/1.0', 'ai-context-transcript/2.0'}:
         document = json.loads(artifact['content'])
         for index, source_record in enumerate(document['records']):
             ids = [record['id'] for record in stored if any(ref.get('record_index') == index for ref in record['source_refs'])]
             if not ids:
-                raise lib.LibraryError('A declared visible source record has no archived message mapping.')
+                raise SourceReplayError('A declared visible source record has no archived message mapping.')
             source_coverage.append({'record_index': index, 'source_id': source_record['id'], 'record_ids': ids, 'status': 'mapped'})
     elif artifact['format'] == 'ai-context-read-thread/1.0':
         document = json.loads(artifact['content'])
@@ -54,7 +59,7 @@ def verify_source(path: Path, project=None):
                         (ref.get('page_index'), ref.get('turn_index'), ref.get('item_index')) == (page_index, turn_index, item_index)
                         for ref in record['source_refs'])]
                     if not ids and item.get('type') in {'userMessage', 'agentMessage'}:
-                        raise lib.LibraryError('A public API message has no archived message mapping.')
+                        raise SourceReplayError('A public API message has no archived message mapping.')
                     source_coverage.append({'page_index': page_index, 'turn_index': turn_index, 'item_index': item_index,
                                             'record_ids': ids, 'status': 'mapped' if ids else 'unparsed-public-item'})
     else:

@@ -22,7 +22,7 @@ class AdapterError(ValueError):
     """An unsupported, malformed, unsafe, or changing input source."""
 
 
-ADAPTER_VERSION = 4
+ADAPTER_VERSION = 5
 
 
 _PRIVATE = {"analysis", "reasoning", "internal", "system", "developer", "justify", "confidence"}
@@ -304,7 +304,8 @@ def parse_codex(path: str | os.PathLike[str]) -> dict[str, Any]:
     return _parse_codex_snapshot(data, source)
 
 
-def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
+def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: dict[int, dict[str, Any]] | None = None,
+                          replay_steps: dict[tuple[int, ...], dict[str, Any]] | None = None) -> dict[str, Any]:
     cutoff = data.rfind(b"\n") + 1
     source.update(parsed_bytes=cutoff, trailing_bytes_ignored=len(data) - cutoff)
     rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
@@ -359,6 +360,27 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
     response_tools: list[dict[str, Any]] = []
     evidence_gaps: list[dict[str, Any]] = []
     visible_source: dict[int, dict[str, Any]] = {}
+    assembly: dict[tuple[int, ...], dict[str, Any]] = {}
+
+    def locator(ref):
+        return (ref["line"], ref["byte_start"])
+
+    def planned(ref):
+        if replay_steps is None:
+            return None
+        step = replay_steps.get(locator(ref))
+        if step is None:
+            raise AdapterError("A retained source row is missing its replay step.")
+        return step
+
+    def remember(ref, record, action, **extra):
+        key = locator(ref)
+        if key in assembly:
+            raise AdapterError("A source row has multiple replay operations.")
+        step = {"locator": list(key), "record_id": record["id"], "action": action, **extra}
+        if replay_steps is not None and step != planned(ref):
+            raise AdapterError("A replay operation disagrees with its source mapping.")
+        assembly[key] = step
 
     def add(row: dict[str, Any], ref: dict[str, Any], obj: dict[str, Any], role: str, content: Any, channel: str | None, fallback_id: str) -> dict[str, Any] | None:
         if channel is None or _private(obj):
@@ -372,11 +394,28 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
                   "timestamp": row.get("timestamp") if isinstance(row.get("timestamp"), str) else None,
                   "source_recorded_at": row.get("timestamp"), "message_created_at": _message_created_at(obj),
                   "content": cleaned, "source_refs": [ref]}
+        step = planned(ref)
+        if step is not None:
+            if step["record_id"] != identity and (identity not in seen or not re.fullmatch(
+                    re.escape(identity) + r":revision:[0-9a-f]{16}", step["record_id"])):
+                raise AdapterError("Replay target is not a version of this source identity.")
+            identity = record["id"] = step["record_id"]
+            if step["action"] == "duplicate":
+                existing = seen.get(identity)
+                if existing is None or any(existing[k] != record[k] for k in ("role", "channel", "content")):
+                    raise AdapterError("A duplicate replay row disagrees with its target.")
+                existing["source_refs"].append(ref)
+                counters["duplicate_records_coalesced"] += 1
+                remember(ref, existing, "duplicate")
+                return existing
+            if step["action"] != "new" or identity in seen:
+                raise AdapterError("A new replay row has an invalid target or action.")
         existing = seen.get(identity)
         if existing is not None:
             if all(existing[k] == record[k] for k in ("role", "channel", "content")):
                 existing["source_refs"].append(ref)
                 counters["duplicate_records_coalesced"] += 1
+                remember(ref, existing, "duplicate")
                 return existing
             signature = json.dumps({k: record[k] for k in ("role", "channel", "content")}, sort_keys=True, ensure_ascii=False).encode()
             record["id"] = identity + ":revision:" + _sha(signature)[:16]
@@ -385,11 +424,13 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
                 if all(revision[k] == record[k] for k in ("role", "channel", "content")):
                     revision["source_refs"].append(ref)
                     counters["duplicate_records_coalesced"] += 1
+                    remember(ref, revision, "duplicate")
                     return revision
                 raise AdapterError("A record revision identity collision was detected.")
         seen[record["id"]] = record
         records.append(record)
         counters["exported_" + role] += 1
+        remember(ref, record, "new")
         return record
 
     def candidate(row: dict[str, Any], ref: dict[str, Any], obj: dict[str, Any], role: str, content: Any, chain: str) -> dict[str, Any] | None:
@@ -538,6 +579,20 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
             matches = [old for old in eligible if entry["chain"] not in old["chains"] and old["text"] == entry["text"]]
             match_kind = "unique-text"
         target = matches[0] if len(matches) == 1 else None
+        step = planned(entry["ref"]) if replay_steps is not None else None
+        if step is not None:
+            # Redaction can make distinct messages textually equal. The source
+            # assembly plan preserves original grouping, never message content.
+            matches = [old for old in eligible if old["record"]["id"] == step["record_id"]]
+            target = matches[0] if step["action"] == "merge-message" and len(matches) == 1 else None
+            if step["action"] == "merge-message" and target is None:
+                raise AdapterError("A message replay merge has no compatible target.")
+            if target is not None:
+                linked_id = entry["chain"] != target["chain"] and bool(entry["ids"] & target["ids"])
+                linked_text = (bool(entry["text"]) and entry["chain"] not in target["chains"]
+                               and entry["text"] == target["text"])
+                if not linked_id and not linked_text:
+                    raise AdapterError("A message replay merge has no source link.")
         if len(matches) > 1:
             counters["ambiguous_message_chain_matches"] += 1
             gap("ambiguous-message-chain-match-preserved-separately", entry["ref"])
@@ -553,26 +608,57 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
             # parts retain their original structure and embedded media bytes.
             existing_parts = _message_parts(record["content"]) + record["content"].get("supplemental_content", [])
             signatures = {_part_signature(part) for part in existing_parts}
-            additions = []
-            for part in _message_parts(entry["content"]):
+            additions, added_parts = [], []
+            parts = _message_parts(entry["content"])
+            if step is not None and (not isinstance(step.get("parts"), list)
+                    or any(type(i) is not int or i < 0 or i >= len(parts) for i in step["parts"])
+                    or step["parts"] != sorted(set(step["parts"]))):
+                raise AdapterError("Invalid supplemental part positions in replay plan.")
+            for index, part in enumerate(parts):
                 signature = _part_signature(part)
-                if signature not in signatures:
+                include_part = index in step["parts"] if step is not None else signature not in signatures
+                if include_part:
                     additions.append(_public(part, counters))
+                    added_parts.append(index)
                     signatures.add(signature)
+                elif signature not in signatures:
+                    raise AdapterError("A replay plan omits distinct visible source content.")
             if additions:
                 record["content"].setdefault("supplemental_content", []).extend(additions)
                 counters["supplemental_message_parts_preserved"] += len(additions)
+            added_keys, supplemental_keys = [], []
+            metadata_keys = set(entry["content"]) - {"content", "message"}
+            if step is not None:
+                for field in ("added_keys", "supplemental_keys"):
+                    values = step.get(field)
+                    if (not isinstance(values, list) or any(not isinstance(k, str) or k not in metadata_keys for k in values)
+                            or len(values) != len(set(values))):
+                        raise AdapterError("Invalid replay metadata keys.")
+                if set(step["added_keys"]) & set(step["supplemental_keys"]):
+                    raise AdapterError("Replay metadata operations overlap.")
             for key, value in entry["content"].items():
                 if key in {"content", "message"}:
                     continue
-                if key not in record["content"]:
+                add_key = key in step["added_keys"] if step is not None else key not in record["content"]
+                supplement = key in step["supplemental_keys"] if step is not None else key in record["content"] and record["content"][key] != value
+                if add_key:
+                    if key in record["content"]:
+                        raise AdapterError("Replay metadata addition would overwrite a value.")
                     record["content"][key] = _public(value, counters)
-                elif record["content"][key] != value:
+                    added_keys.append(key)
+                elif supplement:
+                    if key not in record["content"]:
+                        raise AdapterError("Replay metadata supplement has no original value.")
                     record["content"].setdefault("supplemental_metadata", []).append({key: _public(value, counters)})
+                    supplemental_keys.append(key)
+                elif key not in record["content"] or record["content"][key] != value:
+                    raise AdapterError("A replay plan omits distinct source metadata.")
             record["source_refs"].append(entry["ref"])
             target["chains"].add(entry["chain"])
             target["ids"].update(entry["ids"])
             counters["message_chain_matches_by_" + match_kind] += 1
+            remember(entry["ref"], record, "merge-message", parts=added_parts,
+                     added_keys=added_keys, supplemental_keys=supplemental_keys)
             continue
         record = add(entry["row"], entry["ref"], entry["obj"], entry["role"], entry["content"], entry["channel"], "codex-" + str(entry["ref"]["line"]))
         if record is None:
@@ -595,14 +681,26 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
         if outputs:
             matches = outputs
         unique = {old["record"]["id"]: old for old in matches}
+        step = planned(entry["ref"]) if replay_steps is not None else None
+        if step is not None:
+            unique = {key: old for key, old in unique.items()
+                      if key == step["record_id"]} if step["action"] == "merge-tool" else {}
+            if step["action"] == "merge-tool" and len(unique) != 1:
+                raise AdapterError("A tool replay merge has no target.")
         if len(unique) == 1:
             target = next(iter(unique.values()))["record"]
             visible = _public(entry["content"], counters)
             presentations = target["content"].setdefault("completed_events", [])
-            if visible not in presentations:
+            append_event = step.get("append_event") if step is not None else visible not in presentations
+            if type(append_event) is not bool:
+                raise AdapterError("Invalid replay tool presentation decision.")
+            if append_event:
                 presentations.append(visible)
+            elif visible not in presentations:
+                raise AdapterError("A duplicate tool presentation has no matching value.")
             target["source_refs"].append(entry["ref"])
             counters["tool_event_chain_matches_by_id"] += 1
+            remember(entry["ref"], target, "merge-tool", append_event=append_event)
         else:
             add(entry["row"], entry["ref"], entry["obj"], "tool", entry["content"], "tool", "codex-" + str(entry["ref"]["line"]))
             counters["unmatched_public_tool_events_preserved"] += 1
@@ -612,9 +710,12 @@ def _parse_codex_snapshot(data: bytes, source: dict[str, Any], original_refs: di
     records.sort(key=lambda record: min(ref.get("line", 0) for ref in record["source_refs"]))
     completeness = _completeness(source, mode, counters, unknown)
     completeness["source_evidence_gaps"] = evidence_gaps
+    if replay_steps is not None and set(assembly) != set(replay_steps):
+        raise AdapterError("Replay plan has missing or unused source rows.")
     return {"provider": "codex", "conversation_id": conversation_id, "title": "", "exported_at": None, "records": records,
             "source_artifact": {"format": "ai-context-codex-visible-source/1.0",
-                                "content": {"conversation_id": conversation_id, "source_rows": [visible_source[key] for key in sorted(visible_source)]}},
+                                "content": {"conversation_id": conversation_id, "source_rows": [visible_source[key] for key in sorted(visible_source)]},
+                                "replay_plan": {"schema_version": "codex-assembly/1.0", "steps": list(assembly.values())}},
             "source": source, "completeness": completeness}
 
 
@@ -716,7 +817,8 @@ def parse_read_thread(path: str | os.PathLike[str]) -> dict[str, Any]:
     return _parse_read_thread_snapshot(data, source)
 
 
-def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any]) -> dict[str, Any]:
+def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any],
+                                replay_steps: dict[tuple[int, ...], dict[str, Any]] | None = None) -> dict[str, Any]:
     text = _utf8(data, "read_thread bundle")
     bundle = _json(text, "read_thread bundle")
     if not isinstance(bundle, dict) or bundle.get("schema_version") != "ai-context-read-thread/1.0":
@@ -767,6 +869,13 @@ def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any]) -> dict[str
     records: list[dict[str, Any]] = []
     seen: dict[str, dict[str, Any]] = {}
     gaps: list[dict[str, Any]] = []
+    assembly = {}
+
+    def remember(location, record, action):
+        step = {"locator": list(location), "record_id": record["id"], "action": action}
+        if replay_steps is not None and step != replay_steps.get(location):
+            raise AdapterError("API replay operation disagrees with its source mapping.")
+        assembly[location] = step
     for page_index in page_indices:
         page = pages[page_index]
         turn_indices = list(range(len(page["turns"])))
@@ -802,12 +911,33 @@ def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any]) -> dict[str
                           "turn_id": turn["id"], "turn_started_at": turn.get("startedAt"),
                           "turn_completed_at": turn.get("completedAt"), "turn_status": turn.get("status"),
                           "source_item_type": kind, "content": _public(content, counters), "source_refs": [ref]}
-                existing = seen.get(identity)
                 comparable = lambda value: {key: val for key, val in value.items() if key not in {"id", "source_refs"}}
+                location = (page_index, turn_index, item_index)
+                if replay_steps is not None:
+                    step = replay_steps.get(location)
+                    if step is None:
+                        raise AdapterError("An API source message has no replay step.")
+                    if step["record_id"] != identity and (identity not in seen or not re.fullmatch(
+                            re.escape(identity) + r":source-version:[0-9a-f]{16}", step["record_id"])):
+                        raise AdapterError("API replay target is not a version of this source identity.")
+                    record["id"] = step["record_id"]
+                    existing = seen.get(record["id"])
+                    if step["action"] == "duplicate":
+                        if existing is None or comparable(existing) != comparable(record):
+                            raise AdapterError("Duplicate API replay message disagrees with its target.")
+                        existing["source_refs"].append(ref)
+                        counters["duplicate_api_messages_coalesced"] += 1
+                        remember(location, existing, "duplicate")
+                        continue
+                    if step["action"] != "new" or existing is not None:
+                        raise AdapterError("API replay message has an invalid target or action.")
+                else:
+                    existing = seen.get(identity)
                 if existing is not None:
                     if comparable(existing) == comparable(record):
                         existing["source_refs"].append(ref)
                         counters["duplicate_api_messages_coalesced"] += 1
+                        remember(location, existing, "duplicate")
                         continue
                     record["id"] = identity + ":source-version:" + _sha(json.dumps(comparable(record), sort_keys=True, ensure_ascii=False).encode())[:16]
                     prior = seen.get(record["id"])
@@ -815,9 +945,11 @@ def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any]) -> dict[str
                         if comparable(prior) != comparable(record):
                             raise AdapterError("read_thread source-version identity collision.")
                         prior["source_refs"].append(ref)
+                        remember(location, prior, "duplicate")
                         continue
                 records.append(record)
                 seen[record["id"]] = record
+                remember(location, record, "new")
                 counters["exported_" + record["role"]] += 1
     metadata = {key: value for key, value in bundle.items() if key not in {"schema_version", "pages", "provider", "conversation_id", "title", "exported_at", "completeness"}}
     metadata.update(thread={key: value for key, value in pages[0]["thread"].items() if key != "preview"},
@@ -833,12 +965,47 @@ def _parse_read_thread_snapshot(data: bytes, source: dict[str, Any]) -> dict[str
                         structure_status="branch-relationships-not-established-by-this-api",
                         preview_used_as_body=False)
     completeness["limitations"].append("Page exhaustion describes supplied pagination metadata; missing branches, deleted messages, and omitted pages remain unverified.")
+    if replay_steps is not None and set(assembly) != set(replay_steps):
+        raise AdapterError("API replay plan has missing or unused source items.")
     return {"provider": "chatgpt", "conversation_id": conversation_id,
             "title": bundle.get("title", pages[0]["thread"].get("title", "")),
             "exported_at": bundle.get("exported_at"), "conversation_metadata": metadata,
             "source_declared_completeness": bundle.get("completeness", {}), "records": records,
             "source": source, "completeness": completeness,
-            "source_artifact": {"format": "ai-context-read-thread/1.0", "content": text}}
+            "source_artifact": {"format": "ai-context-read-thread/1.0", "content": text,
+                                "replay_plan": {"schema_version": "read-thread-assembly/1.0", "steps": list(assembly.values())}}}
+
+
+def _replay_steps(artifact, schema, width):
+    """Validate adapter-generated assembly decisions; never accept message copies.
+
+    Old artifacts without a plan keep the original parser behavior. New plans
+    preserve source identities and equality decisions that redaction can erase.
+    Each entry is later consumed and checked against its actual source location.
+    """
+    if "replay_plan" not in artifact:
+        return None
+    plan = artifact["replay_plan"]
+    if (not isinstance(plan, dict) or set(plan) != {"schema_version", "steps"}
+            or plan["schema_version"] != schema or not isinstance(plan["steps"], list)):
+        raise AdapterError("Unsupported source replay plan.")
+    fields = {"new": set(), "duplicate": set()}
+    if width == 2:
+        fields.update({"merge-message": {"parts", "added_keys", "supplemental_keys"}, "merge-tool": {"append_event"}})
+    result = {}
+    for step in plan["steps"]:
+        if (not isinstance(step, dict) or not isinstance(step.get("action"), str)
+                or step["action"] not in fields
+                or set(step) != {"locator", "record_id", "action"} | fields[step["action"]]
+                or not isinstance(step["record_id"], str) or not step["record_id"]
+                or not isinstance(step["locator"], list) or len(step["locator"]) != width
+                or any(type(index) is not int or index < 0 for index in step["locator"])):
+            raise AdapterError("Invalid source replay step.")
+        key = tuple(step["locator"])
+        if key in result or (width == 2 and key[0] < 1):
+            raise AdapterError("Duplicate or invalid source replay location.")
+        result[key] = step
+    return result
 
 
 def replay_source_artifact(artifact: dict[str, Any], provider: str, conversation_id: str, title: str) -> dict[str, Any]:
@@ -868,7 +1035,10 @@ def replay_source_artifact(artifact: dict[str, Any], provider: str, conversation
             rows.append(entry["row"])
             refs[position] = entry["source_ref"]
         data = b"".join(json.dumps(row, ensure_ascii=False).encode() + b"\n" for row in rows)
-        parsed = _parse_codex_snapshot(data, source_for(data), refs)
+        steps = _replay_steps(artifact, "codex-assembly/1.0", 2)
+        if steps is not None and set(steps) != {(ref.get("line"), ref.get("byte_start")) for ref in refs.values()}:
+            raise AdapterError("Codex replay plan does not cover the retained source rows.")
+        parsed = _parse_codex_snapshot(data, source_for(data), refs, steps)
     elif isinstance(content, str):
         data = content.encode("utf-8")
         if format_name in {"ai-context-transcript/1.0", "ai-context-transcript/2.0"}:
@@ -882,7 +1052,7 @@ def replay_source_artifact(artifact: dict[str, Any], provider: str, conversation
                 parsed["records"][0]["id"] = identity["record_id"]
                 parsed["source_artifact"] = artifact
         elif format_name == "ai-context-read-thread/1.0":
-            parsed = _parse_read_thread_snapshot(data, source_for(data))
+            parsed = _parse_read_thread_snapshot(data, source_for(data), _replay_steps(artifact, "read-thread-assembly/1.0", 3))
         else:
             raise AdapterError("Unsupported source artifact format.")
     else:

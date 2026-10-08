@@ -28,6 +28,12 @@ maintainer privately for issues involving sensitive data. Do not publish private
 logs as a reproduction. This repository currently has no hosted service or
 guaranteed response SLA.
 
+Before committing, stage the intended public changes and run
+`python3 -B tools/audit_public_tree.py --tracked`. This mode reads the allowlist,
+file modes and blob contents from the captured Git index, including when working
+copies differ or are absent. A later staging operation needs a new audit. The
+default audit checks working files; neither mode audits historical commits.
+
 Contributions are made under the repository's MIT license. Include provenance and
 license details before adding any third-party code; do not assume an accessible
 skill, snippet or document is automatically redistributable.

@@ -18,9 +18,10 @@ import uuid
 import adapters
 import context_library as lib
 import conversation_catalog as catalog
-from source_verification import verify_source
+from source_verification import verify_source, SourceReplayError
 
 MARKER = 'AI_CONTEXT_AUTO_SYNC_V1'
+CAPTURE_POLICY = f'adapter-{adapters.ADAPTER_VERSION}/redaction-{lib.REDACTION_POLICY_VERSION}'
 
 
 def now():
@@ -201,17 +202,27 @@ def capture(root, source, payload, state, folder):
         matches = [pair for pair in existing if pair[1].get('schema_version') == '2.0']
     for path, old in matches:
         verified, previous = lib.validate_revision(path)
+        if verified.get('redaction', {}).get('policy_version') != lib.REDACTION_POLICY_VERSION:
+            continue
         if semantic_digest(verified, previous) == fingerprint:
-            ensure_source_verified(root, path, old['revision'])
+            try:
+                ensure_source_verified(root, path, old['revision'])
+            except SourceReplayError:
+                # Preserve intact legacy snapshots, but do not let a broken
+                # replay prevent a fresh authorized source from being captured.
+                # Integrity failures above and invalid saved receipts still fail.
+                continue
             for project in source['projects']:
                 catalog.link_project(root, project, key)
-            state['sources'][key] = {**checkpoint, 'revision': old['revision'], 'semantic_sha256': fingerprint, 'checked_at': now()}
+            state['sources'][key] = {**checkpoint, 'revision': old['revision'], 'semantic_sha256': fingerprint,
+                                     'checked_at': now(), 'capture_policy': CAPTURE_POLICY}
             return {'status': 'unchanged-visible-content', 'conversation_id': source['conversation_id'], 'record_count': len(records), 'revision': old['revision']}
     result = lib.publish(root, source['projects'][0], payload, source['title'])
     for project in source['projects'][1:]:
         catalog.link_project(root, project, key)
     ensure_source_verified(root, Path(result['path']), result['revision'])
-    state['sources'][key] = {'revision': result['revision'], 'semantic_sha256': fingerprint, 'checked_at': now()}
+    state['sources'][key] = {'revision': result['revision'], 'semantic_sha256': fingerprint,
+                             'checked_at': now(), 'capture_policy': CAPTURE_POLICY}
     from revision_selection import select_revision, SelectionError
     try:
         select_revision(catalog.revisions_for_key(root, key))
@@ -232,7 +243,7 @@ def ensure_source_verified(root, path, revision):
         raise lib.LibraryError('Invalid saved source verification receipt.')
     report = verify_source(path)
     if report['status'] != 'verified-source-replay':
-        raise lib.LibraryError('Revision did not pass source replay.')
+        raise SourceReplayError('Revision did not pass source replay.')
     catalog.immutable_json(saved, report)
 
 
@@ -325,7 +336,8 @@ def sync_files(root, force=False):
                         atomic_json(root / 'sync-config.json', settings)
                 stamp = stat_signature(path)
                 checkpoint = state['sources'].get(key, {})
-                if not force and checkpoint.get('file_signature') == stamp:
+                if (not force and checkpoint.get('file_signature') == stamp
+                        and checkpoint.get('capture_policy') == CAPTURE_POLICY):
                     for project in source['projects']:
                         catalog.link_project(root, project, key)
                     results.append({'status': 'unchanged-file', 'conversation_id': source['conversation_id']})

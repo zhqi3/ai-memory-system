@@ -33,6 +33,7 @@ tests/test_dual_sources.py
 tests/test_public_audit.py
 tests/test_read_media.py
 tests/test_reading_reviews.py
+tests/test_redaction_replay.py
 tests/test_revision_selection.py
 tests/test_source_catalog.py
 tests/test_source_verification.py

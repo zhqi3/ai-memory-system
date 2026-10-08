@@ -5,7 +5,26 @@ Date: 2026-10-08. Environment: macOS, Python 3.12.14, Git 2.54.0.
 This is a local source preparation checkpoint, not a published release or a
 claim of complete cross-platform support.
 
-## Checks
+## Publication review fixes
+
+- 164 synthetic unit/integration tests passed after the fixes: the original 123,
+  19 additional Git-index audit cases, and 22 redaction/replay cases.
+- Serialized JSON sources are decoded before redaction. Escaped secrets and
+  sensitive metadata are removed, while unchanged JSON lexemes and typed media
+  payloads retain their original representation.
+- Source assembly plans preserve edited message identities and distinct visible
+  contributions after redaction. Replay rejects missing source rows, omitted
+  distinct content, invented identity aliases and unsupported merge targets.
+- Synchronization rechecks unchanged files after adapter/redaction policy
+  upgrades. Intact legacy snapshots that cannot replay remain untouched while a
+  fresh capture is verified; damaged stored files still stop synchronization.
+- Git-index publication checks read the staged allowlist, modes and actual blobs,
+  including when working files differ, are deleted, or replacement refs exist.
+- The synthetic lifecycle demo and the 50-file working-tree publication check
+  passed. Regression triggers failed against the initial implementation and
+  passed after the fixes. Historical snapshots were not rewritten.
+
+## Initial extraction checks
 
 - 123 synthetic unit/integration tests passed: 107 retained archive tests,
   12 workspace and isolation tests, and 4 publication-audit tests.

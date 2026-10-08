@@ -28,6 +28,7 @@ sys.modules.setdefault("context_library", sys.modules[__name__])
 
 
 SCHEMA_VERSION = "2.0"
+REDACTION_POLICY_VERSION = "3"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 PROVIDER = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}\Z")
 FORBIDDEN = {"analysis", "system", "developer"}
@@ -38,6 +39,8 @@ BINARY_MEDIA_TYPES = {
     "audio", "input_audio", "output_audio", "video",
 }
 MEDIA_PAYLOAD_KEYS = {"data", "blob", "bytes", "base64"}
+JSON_SOURCE_FORMATS = {"ai-context-transcript/1.0", "ai-context-transcript/2.0", "ai-context-read-thread/1.0"}
+JSON_STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"')
 BASE64_MEDIA_URI = re.compile(
     r"data:(?:image|audio|video)/[^,\s]*;base64,(?P<payload>[A-Za-z0-9+/=\r\n]*)\Z", re.I)
 REDACTION_PATTERNS = (
@@ -238,6 +241,57 @@ class Redactor:
             return value
         raise LibraryError("Adapter returned non-JSON content.")
 
+    def artifact(self, artifact: Any) -> Any:
+        """Redact JSON sources structurally, preserving unchanged source lexemes.
+
+        Serialized JSON is a transport representation, not an ordinary message:
+        scanning it as text misses escapes and loses typed media boundaries.
+        Both the manifest descriptor and published bytes use this same method.
+        """
+        if not isinstance(artifact, dict) or artifact.get("format") not in JSON_SOURCE_FORMATS:
+            return self.value(artifact)
+        content = artifact.get("content")
+        if not isinstance(content, str):
+            raise LibraryError("JSON source artifact requires serialized text.")
+        adapter = load_adapters()
+        try:
+            document = adapter._json(content, "source artifact")
+        except adapter.AdapterError:
+            raise LibraryError("JSON source artifact is invalid.") from None
+        if not isinstance(document, dict):
+            raise LibraryError("JSON source artifact requires an object.")
+        sanitized = self.value(document)
+
+        def strings(value):
+            if isinstance(value, str):
+                yield value
+            elif isinstance(value, list):
+                for item in value:
+                    yield from strings(item)
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    yield key
+                    yield from strings(item)
+
+        if sanitized != document:
+            before, after = list(strings(document)), list(strings(sanitized))
+            matches = list(JSON_STRING.finditer(content))
+            if len(matches) != len(before) or len(before) != len(after):
+                raise LibraryError("JSON source redaction changed its structure.")
+            pieces, offset = [], 0
+            for match, old, new in zip(matches, before, after):
+                if json.loads(match.group()) != old:
+                    raise LibraryError("JSON source string mapping is inconsistent.")
+                pieces.extend((content[offset:match.start()], match.group() if old == new
+                               else json.dumps(new, ensure_ascii=False)))
+                offset = match.end()
+            content = "".join(pieces) + content[offset:]
+            if adapter._json(content, "redacted source artifact") != sanitized:
+                raise LibraryError("JSON source redaction did not preserve its structure.")
+        result = self.value({key: value for key, value in artifact.items() if key != "content"})
+        result["content"] = content
+        return result
+
 
 def strip_local_paths(value: Any) -> Any:
     """Local provenance location is not part of semantic revision identity."""
@@ -330,8 +384,8 @@ def prepare_payload(payload: dict[str, Any], project: str | None, title: str | N
                            "completeness": payload.get("completeness", {}),
                            "conversation_metadata": payload.get("conversation_metadata", {}),
                            "exported_at": payload.get("exported_at"),
-                           "source_declared_completeness": payload.get("source_declared_completeness", {}),
-                           "source_artifact": payload.get("source_artifact")})
+                           "source_declared_completeness": payload.get("source_declared_completeness", {})})
+    safe["source_artifact"] = redactor.artifact(payload.get("source_artifact"))
     records = safe.pop("records")
     artifact = safe.pop("source_artifact")
     artifact_description = None
@@ -353,7 +407,7 @@ def prepare_payload(payload: dict[str, Any], project: str | None, title: str | N
         "overall_complete": False,
         "limitations": ["Inline media already present in source records is preserved in messages.jsonl; external attachments are not copied or downloaded, and whole-conversation completeness is not established."],
     }
-    redaction = {"policy_version": "2", "count": sum(redactor.counts.values()),
+    redaction = {"policy_version": REDACTION_POLICY_VERSION, "count": sum(redactor.counts.values()),
                  "by_type": {key: value for key, value in sorted(redactor.counts.items()) if value},
                  "scope": "visible-records-and-provenance-metadata",
                  "text_fidelity": "Visible text is preserved except explicitly marked redactions; generated framing is not source text.",
@@ -550,7 +604,7 @@ def publish(root: Path, project: str | None, payload: dict[str, Any], title: str
     transcript = transcript_bytes(manifest, records)
     artifacts = {"messages.jsonl": messages, "transcript.md": transcript}
     if manifest.get("source_artifact"):
-        artifacts["source-artifact.json"] = canonical_bytes(Redactor().value(payload["source_artifact"])) + b"\n"
+        artifacts["source-artifact.json"] = canonical_bytes(Redactor().artifact(payload["source_artifact"])) + b"\n"
     manifest["files"] = {name: {"sha256": digest(data), "bytes": len(data)}
                          for name, data in artifacts.items()}
     manifest["manifest_sha256"] = manifest_digest(manifest)
