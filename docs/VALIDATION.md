@@ -6,6 +6,21 @@ Earlier extraction checkpoints below retain their original scope.
 This is a local source preparation checkpoint, not a published release or a
 claim of complete cross-platform support.
 
+## MOSS 0.2.0-rc.2 candidate — 2026-10-10
+
+- Removed mandatory communication style from the public protocol and memory
+  templates, and the fixed Chinese language/character limit from diagnosis
+  instructions. Evidence, authority, output schema and resource guards remain.
+- Protocol identity and installation paths now use `ai-navigation/1.0.0-rc.2`.
+  Existing adopted protocols are not replaced by this source update.
+- All 243 synthetic tests passed with 0 failures and 0 errors. Both lifecycle
+  demos and the 76-file publication audit passed.
+- A source-only clean copy passed the same checks from an unrelated directory
+  with an empty HOME, no global Git configuration and Python site packages
+  disabled (`-S`). The two runs are the same 243 distinct test cases.
+- The source/templates no longer contain the former STE or fixed-language
+  style requirements. No private deployment, account or model call was used.
+
 ## MOSS 0.2.0-rc.1 candidate — 2026-10-10
 
 - 243 synthetic tests passed, including 20 new MOSS tests, with 0 failures and

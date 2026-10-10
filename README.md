@@ -2,7 +2,9 @@
 
 面向长期项目和多 Agent 协作的本地工具包：**用精简记忆接续工作，用对话原文追溯依据，用 MOSS 导航推进人设定的目标。**
 
-当前本地候选：`0.2.0-rc.1`。[预发布说明](docs/PRERELEASE.md)｜[MOSS 试用与接入](docs/MOSS.md)。
+当前本地候选：`0.2.0-rc.2`。[预发布说明](docs/PRERELEASE.md)｜[MOSS 试用与接入](docs/MOSS.md)。
+
+公开版不强制语言风格。使用者可以按自己的习惯设置回复语言、语气和篇幅。
 
 A local toolkit for compact project memory, on-demand conversation provenance,
 and opt-in MOSS project navigation.

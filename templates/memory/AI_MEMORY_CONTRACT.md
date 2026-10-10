@@ -28,5 +28,5 @@ they are not an operating-system access-control boundary.
 Explicit adoption adds the pinned protocol, adoption evidence and project brief
 to compact startup. Respect disabling and transaction errors. Navigation grants
 no additional write, archive-reading, background or external-message authority.
-Use natural, complete, concise language; preserve conditions and evidence strength.
-Do not announce exact compliance percentages without a complete relevant check.
+Communication language, tone, length and style are chosen by each user in their
+own client or project agreement; this public template sets no mandatory style.

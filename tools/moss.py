@@ -12,7 +12,7 @@ import moss_export
 import navigation_reader as reader
 import workspace
 
-PROTOCOL_VERSION = 'ai-navigation/1.0.0-rc.1'
+PROTOCOL_VERSION = 'ai-navigation/1.0.0-rc.2'
 
 
 def install(path, user_request):
@@ -65,7 +65,7 @@ def install(path, user_request):
         defaults = {'schema_version': 'moss-defaults/1.0', 'system_name': 'MOSS',
                     'system_version': '1.0.0', 'enabled': True, 'default_enabled': True,
                     'adopted_protocol': {'version': PROTOCOL_VERSION,
-                        'path': 'global/navigation/versions/1.0.0-rc.1/protocol.md',
+                        'path': 'global/navigation/versions/1.0.0-rc.2/protocol.md',
                         'sha256': protocol_hash, 'authorization_ref': 'global/navigation/adoption.json'},
                     'records': reader.RECORDS, 'memory_write_policy': {'mode': 'explicit-only', 'authorization_ref': None},
                     'archive_body_loading': 'explicit-request-only', 'transaction_guard': guard}
@@ -75,7 +75,7 @@ def install(path, user_request):
             lib.private_directory(nav, create=True)
             workspace.write_files(nav, {'moss.json': lib.canonical_bytes(defaults) + b'\n',
                 'adoption.json': lib.canonical_bytes(adoption) + b'\n',
-                'versions/1.0.0-rc.1/protocol.md': protocol})
+                'versions/1.0.0-rc.2/protocol.md': protocol})
             for source, before in inputs.items():
                 if lib.regular_file(source).read_bytes() != before:
                     raise ValueError('Project changed during installation; retry after inspection')

@@ -72,7 +72,7 @@ project adoption records, private protocols with source links, logs or actual
 project snapshots were included.
 
 The public candidate protocol is a newly identified portable version based on
-the owned navigation rules, with current plain-language requirements and without
+the owned navigation rules, without mandatory communication style or
 private source-review links. It is adopted only by the user's explicit install
 action. Generic installation, skill wrapper, docs, tests and demo were authored
 for this candidate. The existing MIT software license continues to apply;

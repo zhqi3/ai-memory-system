@@ -97,7 +97,7 @@ class MossTests(unittest.TestCase):
         self.assertFalse(self.status()['effective_enabled'])
 
     def test_protocol_hash_conflict_delivers_no_partial_body_and_can_disable(self):
-        self.install();file=self.memory/'global/navigation/versions/1.0.0-rc.1/protocol.md'
+        self.install();file=self.memory/'global/navigation/versions/1.0.0-rc.2/protocol.md'
         file.write_text('Synthetic tampered protocol')
         result=startup.resolve(self.marker,project='demo',bootstrap=True)
         self.assertEqual(result['status'],'version-conflict');self.assertNotIn('contents',result)
@@ -169,7 +169,7 @@ class MossTests(unittest.TestCase):
         self.assertFalse((self.base/'out.json').exists())
 
     def test_symlink_protocol_is_rejected(self):
-        self.install();file=self.memory/'global/navigation/versions/1.0.0-rc.1/protocol.md'
+        self.install();file=self.memory/'global/navigation/versions/1.0.0-rc.2/protocol.md'
         external=self.base/'external';external.write_text('Synthetic unrelated file');file.unlink();file.symlink_to(external)
         result=startup.resolve(self.marker,project='demo',bootstrap=True)
         self.assertEqual(result['status'],'partial');self.assertNotIn('contents',result)

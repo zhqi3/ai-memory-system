@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-rc.2 — prepared locally, 2026-10-10
+
+- Remove mandatory communication style from the public navigation protocol and
+  memory templates. Each user can choose language, tone, length and style.
+- Remove the fixed Chinese language and prose character limit from optional
+  diagnosis instructions; keep structured output, scope and resource guards.
+- Identify the revised protocol as `ai-navigation/1.0.0-rc.2`; existing private
+  adoptions and the prior release candidate are preserved.
+
 ## 0.2.0-rc.1 — prepared locally, 2026-10-10
 
 - Add opt-in MOSS adoption, pinned protocol/body loading, project/global switches,
