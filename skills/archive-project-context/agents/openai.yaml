@@ -1,0 +1,4 @@
+interface:
+  display_name: "Archive Project Context"
+  short_description: "Archive visible project conversations across agents"
+  default_prompt: "Use $archive-project-context to archive this project conversation from its actual source."

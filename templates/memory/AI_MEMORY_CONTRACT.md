@@ -22,3 +22,11 @@ steps. The conversation archive records available original context separately.
 
 This file is a governance template. These rules require a cooperating caller;
 they are not an operating-system access-control boundary.
+
+## Optional MOSS adoption
+
+Explicit adoption adds the pinned protocol, adoption evidence and project brief
+to compact startup. Respect disabling and transaction errors. Navigation grants
+no additional write, archive-reading, background or external-message authority.
+Use natural, complete, concise language; preserve conditions and evidence strength.
+Do not announce exact compliance percentages without a complete relevant check.

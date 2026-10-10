@@ -13,6 +13,11 @@ authorization. It does not include the operational data store or its history.
   selection instead of a host-specific temporary path.
 - Newly authored workspace initialization, compact startup, demonstration,
   publication checks, templates, integration guides and corresponding tests.
+- A newly authored portable `archive-project-context` skill and visible-export
+  normalization helper for Hermes and Claude Code, plus a ChatGPT bundle route
+  reusing the existing read-thread adapter, with synthetic regressions.
+  Upstream documentation and public schema code were inspected as references;
+  no provider implementation or real provider transcript is bundled.
 
 The public extraction requires an explicit `--root` for archive and sync CLI
 commands. No private runtime configuration is used as a default. Templates start
@@ -56,3 +61,19 @@ CLI defaults, plus the tests and clean source-copy demonstration.
 Consequences: keep data roots explicit, ship empty disabled sync configuration,
 use synthetic fixtures, document host-only integrations, and limit platform
 claims to the [validation evidence](VALIDATION.md).
+
+## MOSS candidate extraction — 2026-10-10
+
+The owner authorized adding the locally authored navigation implementation to
+this repository. The navigation reader, switch logic and export helper were
+extracted from that owned shared implementation; the startup adapter was changed
+to accept only this repository's explicit workspace marker. No host settings,
+project adoption records, private protocols with source links, logs or actual
+project snapshots were included.
+
+The public candidate protocol is a newly identified portable version based on
+the owned navigation rules, with current plain-language requirements and without
+private source-review links. It is adopted only by the user's explicit install
+action. Generic installation, skill wrapper, docs, tests and demo were authored
+for this candidate. The existing MIT software license continues to apply;
+imported user conversations remain outside this software distribution.

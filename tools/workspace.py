@@ -149,6 +149,18 @@ def startup(path: Path, project: str) -> dict:
     project_name(project)
     folder = memory / "projects" / project
     lib.private_directory(folder, create=False)
+    navigation = (memory / "global/navigation/moss.json", folder / "navigation.json")
+    if any(source.exists() or source.is_symlink() for source in navigation):
+        import moss_startup
+        result = moss_startup.resolve(path / "workspace.json", project=project, bootstrap=True)
+        if result.get("status") != "loaded":
+            raise lib.LibraryError(json.dumps(result, ensure_ascii=False))
+        contents = result.pop("contents")
+        files = [{"path": name if name.startswith("global/") else f"projects/{project}/{name}",
+                  "content": body} for name, body in contents.items()]
+        return {**result, "project": project, "files": files, "file_count": len(files),
+                "archive_bodies_loaded": False,
+                "deferred_details": ["decisions.md", "findings.md", "session-log.md", "ai-self-evaluation.md"]}
     entries = [("global/startup-core.md", memory / "global/startup-core.md")]
     entries += [(f"projects/{project}/{name}", folder / name) for name in STARTUP_FILES]
     loaded = []

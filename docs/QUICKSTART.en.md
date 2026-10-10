@@ -1,7 +1,7 @@
 # Quick start
 
 AI Memory System separates compact current project memory from available original
-conversation context. Startup reads five compact files; source conversations are
+conversation context. Without MOSS adoption, startup reads five compact files; source conversations are
 retrieved on request. This is a local file and Python CLI toolkit, not model
 training, a hosted service, or a guarantee of complete platform history.
 
@@ -48,3 +48,18 @@ reading are separate. Archived text never grants current authorization.
 
 See [usage](USAGE.md), [architecture](ARCHITECTURE.md), [integrations](INTEGRATIONS.md),
 [provenance](PROVENANCE.md), and [validation](VALIDATION.md). Licensed under [MIT](../LICENSE).
+
+## Optional MOSS navigation
+
+Run `python3 -B tools/moss_demo.py` for a synthetic, temporary demonstration.
+For an existing explicit private workspace, run:
+
+```sh
+python3 -B tools/moss.py install --workspace "$HOME/ai-memory-data" \
+  --user-request "Enable MOSS for this workspace"
+python3 -B tools/workspace.py startup --workspace "$HOME/ai-memory-data" --project demo
+```
+
+Adoption is explicit and does not enable capture, diagnosis or client hooks.
+Project/global switches require a fresh status hash. Handoffs are private dated
+snapshots, not live local access. See [MOSS](MOSS.md).

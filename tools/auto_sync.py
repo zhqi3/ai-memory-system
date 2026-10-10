@@ -11,6 +11,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import uuid
@@ -21,7 +22,27 @@ import conversation_catalog as catalog
 from source_verification import verify_source, SourceReplayError
 
 MARKER = 'AI_CONTEXT_AUTO_SYNC_V1'
+MAINTENANCE_POLICY = 'heartbeat-envelope/2'
 CAPTURE_POLICY = f'adapter-{adapters.ADAPTER_VERSION}/redaction-{lib.REDACTION_POLICY_VERSION}'
+
+
+def maintenance_message(text):
+    """Recognize only the exact leading marker or its complete app envelope."""
+    text = text.strip()
+    envelope = re.fullmatch(
+        r'<heartbeat>\s*<automation_id>[^<]+</automation_id>\s*'
+        r'<current_time_iso>[^<]+</current_time_iso>\s*'
+        r'<instructions>\s*(.*?)\s*</instructions>\s*</heartbeat>',
+        text, re.DOTALL)
+    if envelope:
+        text = envelope.group(1).strip()
+    return bool(text) and text.splitlines()[0].strip() == MARKER
+
+
+def environment_message(text):
+    """A standalone host environment envelope is not an ordinary user turn."""
+    return bool(re.fullmatch(r'<environment_context>.*?</environment_context>',
+                             text.strip(), re.DOTALL))
 
 
 def now():
@@ -134,8 +155,9 @@ def user_text(row):
 def before_automation_tail(data):
     """Keep all history through the last human turn, before its next heartbeat.
 
-    Only a user message beginning with our exact scheduled prompt marker counts.
-    Never inspect quoted tool output or assistant prose for the marker.
+    Accept the raw marker and the app's complete heartbeat envelope. Standalone
+    environment messages cannot reopen the tail. Quoted tool/assistant text and
+    ordinary user requests containing a marker are never maintenance boundaries.
     """
     offset, cutoff = 0, None
     for line in data.splitlines(keepends=True):
@@ -144,10 +166,10 @@ def before_automation_tail(data):
         row = json.loads(line)
         text = user_text(row)
         if text is not None:
-            if text.strip().startswith(MARKER):
+            if maintenance_message(text):
                 if cutoff is None:
                     cutoff = offset
-            else:
+            elif not environment_message(text):
                 cutoff = None
         offset += len(line)
     return data if cutoff is None else data[:cutoff]
@@ -162,7 +184,7 @@ def file_payload(source, settings):
         bounded = before_automation_tail(data)
         provenance.update(snapshot_bytes=len(bounded), snapshot_sha256=lib.digest(bounded))
         payload = adapters._parse_codex_snapshot(bounded, provenance)
-        payload['completeness']['automatic_capture_boundary'] = 'Before the first marked maintenance prompt after the latest non-maintenance user message; original source is unchanged.'
+        payload['completeness']['automatic_capture_boundary'] = 'Before the first exact marked maintenance prompt (raw or heartbeat envelope) after the latest ordinary user message; standalone environment messages do not reopen the tail. Original source is unchanged.'
         return payload
     return adapters.parse_transcript(path, source['provider'], source['conversation_id'], source['title'])
 
@@ -309,7 +331,12 @@ def receipt(folder, value):
     runs = catalog.ensure_path(folder.parent, 'sync', 'runs')
     path = runs / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8] + '.json')
     lib.write_private(path, lib.canonical_bytes(value) + b'\n')
-    return {**value, 'receipt': str(path)}
+    from sync_health import refresh
+    try:
+        health = refresh(folder.parent)
+    except Exception as exc:
+        health = {'status': 'error', 'error_type': type(exc).__name__, 'model_calls': 0}
+    return {**value, 'receipt': str(path), 'health': health}
 
 
 def sync_files(root, force=False):
@@ -334,16 +361,21 @@ def sync_files(root, force=False):
                     if len(found) == 1:
                         source['path'] = str(found[0]); path = found[0]
                         atomic_json(root / 'sync-config.json', settings)
+                if not path.exists() and not path.is_symlink():
+                    raise FileNotFoundError('Registered source is not present.')
                 stamp = stat_signature(path)
                 checkpoint = state['sources'].get(key, {})
+                maintenance_policy = MAINTENANCE_POLICY if source['conversation_id'] == settings.get('heartbeat_conversation_id') else None
                 if (not force and checkpoint.get('file_signature') == stamp
-                        and checkpoint.get('capture_policy') == CAPTURE_POLICY):
+                        and checkpoint.get('capture_policy') == CAPTURE_POLICY
+                        and checkpoint.get('maintenance_policy') == maintenance_policy):
                     for project in source['projects']:
                         catalog.link_project(root, project, key)
                     results.append({'status': 'unchanged-file', 'conversation_id': source['conversation_id']})
                     continue
                 payload = file_payload(source, settings)
                 result = capture(root, source, payload, state, folder)
+                state['sources'][key]['maintenance_policy'] = maintenance_policy
                 # A writer may have appended after the capture boundary. In
                 # that case never claim the new stat belongs to this snapshot.
                 if stat_signature(path) == stamp:
@@ -392,12 +424,30 @@ def main():
     args = parser.parse_args()
     try:
         result = status(args.root) if args.command == 'status' else sync_files(args.root, args.force) if args.command == 'sync-files' else import_api(args.root, args.conversation, args.source)
+        if args.command != 'status' and result.get('status') != 'paused' and result.get('health', {}).get('status') != 'error':
+            from auto_diagnose import maybe_dispatch
+            result['diagnosis'] = maybe_dispatch(args.root)
         print(json.dumps(result, ensure_ascii=False))
-        return 1 if result.get('status') == 'errors' else 0
+        return 1 if (result.get('status') == 'errors' or result.get('health', {}).get('status') == 'error'
+                     or result.get('diagnosis', {}).get('status') in ('error', 'failed')) else 0
     except BlockingIOError:
         print(json.dumps({'status': 'already-running'})); return 0
     except Exception as exc:
-        print(json.dumps({'status': 'error', 'error_type': type(exc).__name__, 'detail': 'No source text was printed. Check registered paths, source identity, permissions, and source format.'})); return 1
+        result = {'status': 'error', 'error_type': type(exc).__name__, 'detail': 'No source text was printed. Check registered paths, source identity, permissions, and source format.'}
+        if args.command != 'status':
+            result['scope'] = 'api' if args.command == 'import-read-thread' else 'files'
+            if args.command == 'import-read-thread':
+                result['sources'] = [{'status': 'error', 'conversation_id': args.conversation,
+                                      'error_type': type(exc).__name__}]
+            try:
+                with locked(args.root) as folder:
+                    result = receipt(folder, result)
+            except Exception:
+                result['receipt_status'] = 'unavailable'
+            if result.get('health', {}).get('status') not in (None, 'error'):
+                from auto_diagnose import maybe_dispatch
+                result['diagnosis'] = maybe_dispatch(args.root)
+        print(json.dumps(result)); return 1
 
 
 if __name__ == '__main__':

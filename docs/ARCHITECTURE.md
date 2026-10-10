@@ -75,3 +75,11 @@ POSIX 私有文件权限和符号链接拒绝减少意外访问，但不提供�
 历史对话是数据，不能授予新的写入、执行或外发权限。自动抓取只能更新明确配置
 范围内的归档；精简记忆的写入仍由当前用户授权和契约控制。规范约束依赖调用者
 遵循，并非模型级别的强制隔离。源文件和 AI 平台数据库永远不是写入目标。
+
+## Optional MOSS navigation
+
+An explicitly adopted protocol joins compact startup through a pinned hash.
+Without adoption, legacy five-file startup remains. Active navigation supplies
+actual protocol/adoption bodies and project brief; disabled navigation preserves
+compact startup and registered transaction checks. Conversation bodies remain
+outside startup. See [MOSS](MOSS.md) for activation and client boundaries.
