@@ -2,7 +2,7 @@
 
 面向长期项目和多 Agent 协作的本地工具包：**用精简记忆接续工作，用对话原文追溯依据，用 MOSS 导航推进人设定的目标。**
 
-当前本地候选：`0.2.0-rc.2`。[预发布说明](docs/PRERELEASE.md)｜[MOSS 试用与接入](docs/MOSS.md)。
+当前公开预发布版：[0.2.0-rc.2](https://github.com/zhqi3/ai-memory-system/releases/tag/v0.2.0-rc.2)，于 2026-10-10 发布，尚非正式版。[预发布说明](docs/PRERELEASE.md)｜[MOSS 试用与接入](docs/MOSS.md)。
 
 公开版不强制语言风格。使用者可以按自己的习惯设置回复语言、语气和篇幅。
 
@@ -37,7 +37,7 @@ flowchart LR
 
 ## 快速试用
 
-需要 Python 3.10+，运行代码只依赖标准库。当前已在 macOS 验证；Linux 尚未验证，Windows 暂不支持文件锁和权限实现。
+当前支持与验证范围限定为已测试的 macOS 环境和 Python 3.12.14，运行代码只依赖标准库。其他 Python 版本及其他 macOS 环境尚未单独验证；Linux 尚未验证，Windows 不支持当前文件锁和权限实现。
 
 在仓库根目录执行，无需安装第三方依赖：
 

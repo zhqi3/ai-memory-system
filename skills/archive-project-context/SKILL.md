@@ -48,8 +48,10 @@ Do not open provider databases, login files, WAL/SHM, or edit provider logs.
 
 ## Capture and verify
 
-Run this package's `scripts/capture.py` with Python 3.10+ on a supported POSIX
-host, using explicit paths. For example, after replacing the example values:
+Run this package's `scripts/capture.py` in the validated macOS environment with
+Python 3.12.14, using explicit paths. Other Python versions, other macOS
+environments and Linux are unvalidated; Windows is unsupported.
+For example, after replacing the example values:
 
 ```sh
 python3 -B "$SKILL_DIR/scripts/capture.py" \

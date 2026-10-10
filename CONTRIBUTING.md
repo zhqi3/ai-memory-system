@@ -1,6 +1,8 @@
 # Contributing
 
-Use Python 3.10+ and synthetic fixtures only. Keep changes focused and document
+Use the validated macOS environment with Python 3.12.14 and synthetic fixtures
+only. Other Python versions, other macOS environments and Linux are unvalidated;
+Windows is unsupported. Keep changes focused and document
 source format assumptions and platform limits. Do not attach real chats, provider
 exports, credentials, private absolute paths, or runtime receipts to issues or PRs.
 

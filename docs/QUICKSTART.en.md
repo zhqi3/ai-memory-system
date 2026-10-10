@@ -5,9 +5,10 @@ conversation context. Without MOSS adoption, startup reads five compact files; s
 retrieved on request. This is a local file and Python CLI toolkit, not model
 training, a hosted service, or a guarantee of complete platform history.
 
-Python 3.10+ and its standard library are sufficient. Validated on macOS. Linux
-has not been validated; Windows is not supported by the current POSIX permissions
-and file locking implementation.
+The supported and validated environment is limited to the tested macOS host with
+Python 3.12.14; runtime code uses only the standard library. Other Python versions,
+other macOS environments and Linux have not been validated. Windows is unsupported
+by the current POSIX permissions and file locking implementation.
 
 From the repository root:
 

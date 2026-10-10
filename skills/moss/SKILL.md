@@ -9,7 +9,9 @@ Use an explicitly selected trusted `ai-memory-system` checkout and private
 workspace. Obtain missing paths from the user; do not scan accounts or guess a
 project. An existing complete, current snapshot can be reused.
 
-Run the bundled helper with Python 3.10+ on the supported POSIX host:
+Run the bundled helper in the validated macOS environment with Python 3.12.14.
+Other Python versions, other macOS environments and Linux are unvalidated;
+Windows is unsupported. Use explicit paths:
 
 ```sh
 python3 -B "<skill>/scripts/moss.py" --repo "<checkout>" \

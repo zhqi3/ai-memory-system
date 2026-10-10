@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.2.0-rc.2 — prepared locally, 2026-10-10
+## Unreleased
+
+- Correct the README and release documentation to reflect the published rc.2
+  prerelease. These documentation changes do not replace the published tag or assets.
+- Limit the supported and validated environment to the tested macOS host with
+  Python 3.12.14. Other Python versions, other macOS environments and Linux remain
+  unvalidated; Windows is unsupported by the current POSIX implementation.
+
+## 0.2.0-rc.2 — published prerelease, 2026-10-10
+
+[GitHub release](https://github.com/zhqi3/ai-memory-system/releases/tag/v0.2.0-rc.2).
+This is a public prerelease, not a stable release.
 
 - Remove mandatory communication style from the public navigation protocol and
   memory templates. Each user can choose language, tone, length and style.
@@ -23,5 +34,5 @@
 - Add synthetic navigation regressions, a standalone lifecycle demo and release
   preparation instructions. Real project records and host settings are excluded.
 
-This candidate is not a published GitHub release. Prior local/client acceptance
-is not transferred into a claim that this portable package supports every host.
+The rc.1 candidate was prepared locally and was not published as a GitHub release.
+Prior local/client acceptance does not establish support on every host.

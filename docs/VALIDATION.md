@@ -1,10 +1,12 @@
 # Local validation
 
-Latest candidate check: 2026-10-10. Environment: macOS, Python 3.12.14.
+Latest release-candidate check: 2026-10-10. Environment: macOS, Python 3.12.14.
 Earlier extraction checkpoints below retain their original scope.
 
-This is a local source preparation checkpoint, not a published release or a
-claim of complete cross-platform support.
+These are local checks performed before publication. The resulting
+[0.2.0-rc.2 prerelease](https://github.com/zhqi3/ai-memory-system/releases/tag/v0.2.0-rc.2)
+was published on 2026-10-10. Publication does not expand the validation scope:
+support is limited to the tested macOS host with Python 3.12.14.
 
 ## MOSS 0.2.0-rc.2 candidate — 2026-10-10
 
@@ -169,6 +171,8 @@ schemas. No clean operating-system installation, Linux, Windows, or every
 supported Python version was exercised. A file allowlist and signature scan
 reduce accidental exposure but are not exhaustive privacy or security audits.
 
-The expected Python minimum is 3.10 based on the language features used; only
-the Python version above was executed for this checkpoint. Automatic sync was
+The earlier Python 3.10 syntax check is not runtime acceptance. Supported and
+validated operation is limited to the tested macOS host with Python 3.12.14;
+other Python versions, other macOS environments and Linux remain unvalidated,
+and Windows is unsupported by the current implementation. Automatic sync was
 tested against synthetic files; no scheduler is shipped or installed here.
